@@ -12,13 +12,43 @@ const getTasks = async (req, res) => {
   }
 };
 
+const getTaskById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const task = await prisma.task.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    // (optional) ensure the logged-in user owns this task
+    if (task.authorId !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    res.json(task);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 //create task
 const createTask = async (req, res) => {
-  const { title, description } = req.body;
+  const { title, description, startTime, endTime } = req.body;
 
   try {
     const task = await prisma.task.create({
-      data: { title, description, authorId: req.user.id },
+      data: {
+        title,
+        description,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        authorId: req.user.id,
+      },
     });
     res.status(201).json(task);
   } catch (error) {
@@ -29,7 +59,8 @@ const createTask = async (req, res) => {
 //update task
 const updateTask = async (req, res) => {
   const { id } = req.params;
-  const { title, description } = req.body;
+  const { title, description, startTime, endTime } = req.body;
+
   try {
     const existing = await prisma.task.findUnique({
       where: { id: Number(id) },
@@ -39,7 +70,12 @@ const updateTask = async (req, res) => {
 
     const updated = await prisma.task.update({
       where: { id: Number(id) },
-      data: { title, description },
+      data: {
+        title,
+        description,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+      },
     });
     res.status(200).json(updated);
   } catch (error) {
@@ -66,4 +102,35 @@ const deleteTask = async (req, res) => {
   }
 };
 
-module.exports = { getTasks, createTask, updateTask, deleteTask };
+//mark task complete
+const toggleComplete = async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id);
+
+    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    // Only author can update
+    if (task.authorId !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: { completed: !task.completed },
+    });
+
+    res.json(updatedTask);
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+module.exports = {
+  getTasks,
+  getTaskById,
+  createTask,
+  updateTask,
+  deleteTask,
+  toggleComplete,
+};
